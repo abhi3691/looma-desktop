@@ -1,3 +1,6 @@
+import {MusicRequest} from "./music-request";
+import {playMusic} from "./music-player";
+const musicRequest=new MusicRequest();
 import { assistantIntent, type AssistantIntent } from "./assistant-actions";
 import { readdir } from "node:fs/promises";
 import { motionStep } from "./pet-motion";
@@ -39,7 +42,7 @@ import { promisify } from "node:util";
 import { LocalRuntime, GEMMA_MODEL, DEFAULT_MODEL } from "./runtime";
 import { companionCommand } from "./companion";
 import { internetIntent, internetSearch, searchReply } from "./internet";
-import { SONG, SONG_HEADER, wantsSong, melodyWave } from "./song";
+import { SONG, SONG_HEADER, melodyWave } from "./song";
 import { transcribe, synthesize, synthesizeOnline } from "./voice";
 let runtime: LocalRuntime;
 import { Memory } from "./storage";
@@ -872,6 +875,7 @@ else {
           memory.add("user", text);
           let answer: string;
           resting = false;
+          const music = musicRequest.next(text);
           const companion = companionCommand(text);
           const assistant = assistantIntent(text);
           const room = homeIntent(text);
@@ -885,7 +889,10 @@ else {
                   .map((e) => e.text),
               )
             : undefined;
-          if (personal) {
+          if (music) {
+            try {answer=music.query ? await playMusic(music.query) : music.answer;}
+            catch {answer="I could not open YouTube Music. Please check your connection and try again.";}
+          } else if (personal) {
             if (personal.save) memory.add("personal", personal.save);
             answer = personal.answer;
           } else if (room) {
@@ -896,8 +903,7 @@ else {
           } else if (companion) {
             performGesture(companion);
             answer = companion.answer;
-          } else if (wantsSong(text)) {
-            answer = SONG;
+
           } else if (internetIntent(text)) {
             if (!memory.settings().internet)
               answer =
