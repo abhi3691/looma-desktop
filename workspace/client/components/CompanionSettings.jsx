@@ -79,6 +79,8 @@ export default function CompanionSettings() {
       {toggle("voiceInput", "Microphone")}
       {toggle("wakeWord", "Listen for “Hi Looma”")}
       {toggle("voiceOutput", "Speak replies")}
+      {toggle("internet", "Internet answers")}
+      <p className="text-xs text-[#89735e]">Allow online searches for news and current information. Only the search question is sent; microphone recordings stay local.</p>
       <label className="block text-sm">
         Microphone
         <select
