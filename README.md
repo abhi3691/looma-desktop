@@ -24,13 +24,13 @@ npm run dist:mac
 npm run dist:win
 ```
 
-The server builder selects the virtualenv executable for the current OS. Windows packaging configuration is included; the current installer was built and tested on Apple Silicon macOS. Mac builds are ad-hoc signed, not Apple-notarized.
+The server builder selects the virtualenv executable for the current OS. Native Windows x64 and Intel Mac installers are built by the release workflows alongside the Apple Silicon Mac installer. Mac builds are ad-hoc signed, not Apple-notarized.
 
 ## Using Looma
 
 Opening Looma starts its authenticated loopback workspace and floating puppy. Use the Looma menu → **Companion settings** for Gemini, voice, multiple MCP servers, activity monitoring and privacy. **Open workspace** returns to the Open Dots dashboard. Closing a window hides it; Quit stops the app and server.
 
-Enable hands-free voice in Companion settings and grant macOS microphone permission. Say “Hi Looma,” pause, then ask your question. Recognition uses a configured local multilingual Whisper model. Voice recognition does not use browser SpeechRecognition. The model and speech runtimes are optional downloads, not included in the installer. Existing settings, connections and installed speech models remain in the existing `careless-ai` application data directory.
+Enable hands-free voice in Companion settings and grant macOS microphone permission. Say “Hi Looma,” pause, then ask your question. Recognition uses a configured local multilingual Whisper model. Voice recognition does not use browser SpeechRecognition. Release installers include the recognition models and platform-specific speech runtimes. Existing settings, connections and installed speech models remain in the existing `careless-ai` application data directory.
 
 Gemini Live uses `gemini-3.1-flash-live-preview`, configured with your own key in Companion settings. It currently receives a completed, locally transcribed question and returns native audio; this is not continuous audio streaming. Microphone wake performance still depends on room noise, model and device. Local/mock providers remain available in Companion settings.
 
@@ -81,3 +81,7 @@ For a macOS release, place the official whisper.cpp `ggml-small.bin` and `ggml-t
 ### Clear playful voice (0.3.3)
 
 The Mac bundle includes the online speaker executable. The playful voice uses Malayalam Sobhana or English Ana with a gentle +8 Hz pitch adjustment and a relaxed speaking rate. Neural replies play as one utterance. Online voice errors are reported instead of silently replacing it with a basic robotic voice. Internet access is required for this speaker; reply text is processed by the speech service.
+
+### Additional release installers
+
+Run the Windows installer and Intel Mac installer workflows from GitHub Actions with an existing release tag (for example `v0.3.4`). Each workflow builds its server, speaker and Whisper executable on the target OS, verifies recognition-model checksums, runs typecheck and unit tests, and uploads the installer and SHA-256 checksum to that release. Windows packages target x64; Intel Mac packages target x86_64. Choose the `arm64` DMG for Apple Silicon. These early builds are unsigned on Windows and ad-hoc signed on Mac.
