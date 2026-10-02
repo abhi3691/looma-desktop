@@ -18,6 +18,3 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run pack
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

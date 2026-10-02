@@ -13,7 +13,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "pack": "npm run build && electron-builder --dir",
     "dist:mac": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && electron-builder --mac",
-    "dist:win": "npm run build && npm run build:workspace && npm run build:server && electron-builder --win",
+    "dist:win": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && electron-builder --win",
     "test:smoke": "npm run build && electron scripts/smoke.cjs",
     "format": "prettier --write src tests scripts public build.mjs package.json tsconfig.json README.md",
     "setup:mac-runtime": "node scripts/download-runtime.mjs",
@@ -76,7 +76,17 @@
         "portable"
       ],
       "icon": "public/icon.png",
-      "signExecutable": false
+      "signExecutable": false,
+      "extraResources": [
+        {
+          "from": "bundled-speech-runtime",
+          "to": "speech-runtime"
+        },
+        {
+          "from": "voice-runtime/dist/edge-tts",
+          "to": "voice-runtime"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

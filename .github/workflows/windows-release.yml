@@ -1,0 +1,82 @@
+name: Windows installer
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        default: v0.3.4
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm --prefix workspace/client ci
+      - name: Prepare server and voice runtime
+        run: |
+          python -m venv workspace/server/.venv
+          & workspace/server/.venv/Scripts/python.exe -m pip install -r workspace/server/requirements-build.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build:server
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build:voice
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Bundle verified recognition models
+        run: |
+          New-Item -ItemType Directory -Force bundled-models
+          curl.exe -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin -o bundled-models/ggml-small.bin
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          curl.exe -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin -o bundled-models/ggml-tiny.en.bin
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/verify-speech-models.mjs
+      - name: Build native Windows recognition runtime
+        run: |
+          git clone https://github.com/ggml-org/whisper.cpp.git "$env:RUNNER_TEMP/whisper"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C "$env:RUNNER_TEMP/whisper" checkout 6e4ab854f67f743900934a703d5603419384c961
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake -S "$env:RUNNER_TEMP/whisper" -B "$env:RUNNER_TEMP/whisper/build" -A x64 -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_BLAS=OFF -DGGML_OPENMP=OFF -DWHISPER_BUILD_TESTS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build "$env:RUNNER_TEMP/whisper/build" --config Release --target whisper-cli -j 4
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force bundled-speech-runtime
+          Copy-Item "$env:RUNNER_TEMP/whisper/build/bin/Release/whisper-cli.exe" bundled-speech-runtime/
+          Copy-Item "$env:RUNNER_TEMP/whisper/LICENSE" bundled-speech-runtime/
+          & bundled-speech-runtime/whisper-cli.exe --help
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:workspace
+      - name: Create installer
+        run: npx electron-builder --win nsis --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Looma-Windows-x64
+          path: release/*.exe
+      - name: Add installer to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $asset = Get-ChildItem release/*.exe
+          if ($asset.Count -ne 1) { throw 'Expected one installer' }
+          $hash = (Get-FileHash $asset.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($asset.Name)" | Set-Content -Encoding utf8 release/SHA256SUMS-Windows.txt
+          gh release upload "$env:RELEASE_TAG" "$($asset.FullName)" release/SHA256SUMS-Windows.txt --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
