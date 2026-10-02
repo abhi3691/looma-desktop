@@ -1,0 +1,108 @@
+{
+  "name": "careless-ai",
+  "version": "0.3.4",
+  "description": "Your private desktop companion",
+  "author": "Looma",
+  "license": "MIT",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "start": "electron .",
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "pack": "npm run build && electron-builder --dir",
+    "dist:mac": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && electron-builder --mac",
+    "dist:win": "npm run build && npm run build:workspace && npm run build:server && electron-builder --win",
+    "test:smoke": "npm run build && electron scripts/smoke.cjs",
+    "format": "prettier --write src tests scripts public build.mjs package.json tsconfig.json README.md",
+    "setup:mac-runtime": "node scripts/download-runtime.mjs",
+    "test:voice": "node --import tsx scripts/voice-smoke.mjs",
+    "build:workspace": "npm --prefix workspace/client run build",
+    "build:server": "node scripts/build-server.mjs",
+    "test:workspace": "electron scripts/workspace-smoke.cjs",
+    "build:voice": "node scripts/build-voice.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "ajv": "^8.17.1",
+    "sql.js": "^1.13.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/sql.js": "^1.4.9",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "build": {
+    "appId": "ai.careless.desktop",
+    "productName": "Looma",
+    "files": [
+      "dist/**/*",
+      "public/**/*",
+      "node_modules/sql.js/dist/sql-wasm.wasm"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Capture a screen only when you request a snapshot.",
+        "NSMicrophoneUsageDescription": "Listen locally for Hi Looma and your questions when you enable hands-free voice."
+      },
+      "icon": "public/icon.png",
+      "identity": null,
+      "extraResources": [
+        {
+          "from": "bundled-speech-runtime",
+          "to": "speech-runtime"
+        },
+        {
+          "from": "voice-runtime/dist/edge-tts",
+          "to": "voice-runtime"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/icon.png",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "directories": {
+      "output": "release"
+    },
+    "afterPack": "scripts/after-pack.cjs",
+    "extraResources": [
+      {
+        "from": "workspace/server/dist/looma-server",
+        "to": "looma-server"
+      },
+      {
+        "from": "workspace/client/out",
+        "to": "looma-client"
+      },
+      {
+        "from": "workspace/UPSTREAM-LICENSE",
+        "to": "Open-Dots-LICENSE"
+      },
+      {
+        "from": "bundled-models",
+        "to": "speech-models"
+      }
+    ]
+  }
+}

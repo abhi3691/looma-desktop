@@ -1,0 +1,1 @@
+export default function MascotAvatar({size='md',className=''}) { const sizes={sm:'w-7 h-7',md:'w-10 h-10',lg:'w-12 h-12'};return <img src="/looma-puppy.svg" alt="Looma puppy" className={`${sizes[size]||sizes.md} object-contain ${className}`}/>; }

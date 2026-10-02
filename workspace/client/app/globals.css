@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #faf6ee;
+  --foreground: #49382d;
+  --sidebar-bg: #f3eadc;
+  --card-active: #eadbc7;
+  --popover-bg: #fffdf8;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dark Desktop Glass & Card Styles */
+.dark-sidebar {
+  background-color: #f3eadc;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dark-popover {
+  background-color: #fffdf8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+}
+
+.dark-pill-input {
+  background-color: #fffdf8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.dark-bubble-bot {
+  background-color: #f3e8d7;
+  color: #49382d;
+  border-radius: 18px;
+}
+
+.dark-bubble-error {
+  background-color: #241416;
+  border: 1px solid #3f191b;
+  color: #f87171;
+  border-radius: 18px;
+}
+
+.dark-bubble-user {
+  background-color: #79563c;
+  color: #ffffff;
+  border-radius: 18px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out forwards;
+}
+
+
+/* Looma cream, caramel and cocoa theme. */
+.looma-theme { color-scheme: light; }
+.looma-theme .text-white,.looma-theme .text-zinc-100,.looma-theme .text-gray-100 { color: #49382d; }
+.looma-theme .text-zinc-400,.looma-theme .text-gray-400,.looma-theme .text-zinc-500 { color: #89735e; }
+.looma-theme .bg-zinc-900,.looma-theme .bg-gray-900,.looma-theme .bg-zinc-800 { background: #f1e5d4; }
+.looma-theme .border-white\/5,.looma-theme .border-white\/10 { border-color: #dfcdb5; }
+.looma-theme .dark-bubble-user { color: #fff9ef; }
+.looma-theme .dark-popover,.looma-theme .dark-pill-input { border-color:#dfcdb5; box-shadow:0 12px 28px #79563c18; }
+.looma-theme .text-zinc-200,.looma-theme .text-zinc-300,.looma-theme .text-gray-200,.looma-theme .text-gray-300 { color:#5e4837; }
+.looma-theme input { background-color:#fffdf8; color:#49382d; }
+.looma-theme .dark-sidebar { border-color:#dfcdb5; }
+.looma-theme .border-zinc-800,.looma-theme .border-zinc-700 { border-color:#dfcdb5; }
+.looma-theme .dark-bubble-user * { color:#fff9ef; }
+.looma-theme table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0; }
+.looma-theme th,.looma-theme td { border-bottom:1px solid #d8c5aa; padding:10px 12px; text-align:left; vertical-align:top; }
+.looma-theme th { background:#eadbc7; font-weight:600; }

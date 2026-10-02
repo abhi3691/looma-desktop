@@ -1,0 +1,10 @@
+const {app,BrowserWindow}=require('electron');
+const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'..');
+const source=fs.readFileSync(path.join(root,'src/dog.ts'),'utf8');
+const puppy=source.match(/return `([\s\S]*?)`;/)[1];
+const icon=puppy.replace('viewBox="0 0 300 280"','xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 300 300"').replace('<defs>','<rect x="8" y="8" width="284" height="284" rx="64" fill="#faf2e4"/><defs>');
+fs.writeFileSync(path.join(root,'public/icon.svg'),icon);
+fs.mkdirSync(path.join(root,'workspace/client/public'),{recursive:true});
+fs.writeFileSync(path.join(root,'workspace/client/public/looma-puppy.svg'),puppy.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"'));
+app.whenReady().then(async()=>{const w=new BrowserWindow({show:false,transparent:true,backgroundColor:"#00000000",width:1024,height:1024,webPreferences:{offscreen:true,contextIsolation:true,sandbox:true}});await w.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<style>body{margin:0;background:transparent}svg{width:1024px;height:1024px}</style>'+icon));await new Promise(r=>setTimeout(r,250));const im=await w.webContents.capturePage();fs.writeFileSync(path.join(root,'public/icon.png'),im.resize({width:1024,height:1024}).toPNG());app.quit();});
