@@ -30,3 +30,5 @@ workspace/client/.next/
 workspace/client/out/
 *.spec
 *-preview.png
+
+references/

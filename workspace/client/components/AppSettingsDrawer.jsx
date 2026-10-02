@@ -1,5 +1,6 @@
 "use client";
 
+import SmartRoomSettings from "./SmartRoomSettings";
 import CompanionSettings from "./CompanionSettings";
 import ProviderSettings from "./ProviderSettings";
 import React, { useState, useEffect } from "react";
@@ -23,7 +24,6 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
   const [headersConfigured, setHeadersConfigured] = useState(false);
   const [headersMode, setHeadersMode] = useState("keep");
   const [headers, setHeaders] = useState([{ name: "", value: "" }]);
-  const [composioKey, setComposioKey] = useState("");
   const [composioConfigured, setComposioConfigured] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -37,7 +37,6 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
     setNotice(null);
     setConnectorNotice(null);
     setApiKey("");
-    setComposioKey("");
     setShowKey(false);
     setUserName(localStorage.getItem("open_dots_user_name") || "");
     setUserEmail(localStorage.getItem("open_dots_user_email") || "");
@@ -55,7 +54,6 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
       setHeadersConfigured(Boolean(data.model_api_headers_configured));
       setHeadersMode("keep");
       setHeaders([{ name: "", value: "" }]);
-      setComposioConfigured(Boolean(data.composio_api_key_configured));
       setLoaded(true);
     });
     return () => { cancelled = true; };
@@ -115,22 +113,6 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
     }
   };
 
-  const saveConnector = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    setConnectorNotice(null);
-    try {
-      const saved = await saveSettings({ composio_api_key: composioKey.trim() });
-      setComposioKey("");
-      setComposioConfigured(Boolean(saved.composio_api_key_configured));
-      setConnectorNotice({ text: "Connector key saved." });
-    } catch (error) {
-      setConnectorNotice({ error: true, text: error.message });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <aside aria-label="App Settings" className="w-96 md:w-[420px] max-w-[100vw] h-screen bg-[#fffdf8] border-l border-[#eadbc7] flex flex-col z-30 shadow-2xl flex-shrink-0">
       <div className="p-5 border-b border-[#eadbc7] flex items-center justify-between">
@@ -140,14 +122,7 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <CompanionSettings />
         <ProviderSettings />
-
-        <form onSubmit={saveConnector} className={cardClass}>
-          <h3 className="text-sm font-semibold">App connectors</h3>
-          <label htmlFor="composio-key" className="block text-xs font-medium">Composio API Key</label>
-          <input id="composio-key" type="password" autoComplete="new-password" value={composioKey} onChange={(e) => setComposioKey(e.target.value)} placeholder={composioConfigured ? "Stored securely — leave blank to keep" : "Optional connector key"} className={inputClass} disabled={!loaded || saving} />
-          <button disabled={!loaded || saving} className={buttonClass}>Save connector key</button>
-          {connectorNotice && <p role={connectorNotice.error ? "alert" : "status"} className={`text-xs ${connectorNotice.error ? "text-red-400" : "text-emerald-400"}`}>{connectorNotice.text}</p>}
-        </form>
+        <SmartRoomSettings />
 
         <div className={cardClass}>
           <h3 className="text-sm font-semibold">Profile</h3>

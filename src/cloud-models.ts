@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { liveReply } from "./google-live";
 export const cloudProviders = {
+  huggingface: {name:"Hugging Face · Muse Glimmer",base:"https://router.huggingface.co/v1",seeds:["meta-models/Muse-Glimmer-30B:together", "meta-models/Muse-Glimmer-30B"],protocol:"chat"},
+  local: {name:"Local GGUF · Muse Glimmer",base:"http://127.0.0.1:8080/v1",seeds:["muse-glimmer-30B"],protocol:"chat"},
   google: {
     name: "Google Gemini",
     base: "https://generativelanguage.googleapis.com/v1beta",
@@ -33,7 +35,7 @@ export const cloudProviders = {
   },
 } as const;
 export type CloudId = keyof typeof cloudProviders;
-const providerId = z.enum(["google", "openai", "xai", "deepseek", "anthropic"]);
+const providerId = z.enum(["google", "openai", "xai", "deepseek", "anthropic", "huggingface", "local"]);
 const storedSchema = z.object({
   keys: z.record(z.string(), z.string()).default({}),
   models: z.record(z.string(), z.array(z.string())).default({}),
@@ -62,7 +64,8 @@ export class CloudModels {
     return Object.entries(cloudProviders).map(([id, p]) => ({
       id,
       name: p.name,
-      configured: !!this.key(id as CloudId),
+      configured: id === "local" ? this.checked.has(id) : !!this.key(id as CloudId),
+      local: id === "local",
       verified: this.checked.has(id),
       models: this.data.models[id] || [...p.seeds],
     }));
@@ -74,14 +77,15 @@ export class CloudModels {
         name: model,
         provider: p.name,
         description: p.configured
-          ? "Key saved · choose to use"
-          : "API key needed in Settings",
+          ? (p.local ? "Local server connected" : "Key saved · choose to use")
+          : (p.local ? "Start a local server in Settings" : "API key needed in Settings"),
         is_available: p.configured,
         recommended: `${p.id}:${model}` === this.data.active,
       })),
     );
   }
   private headers(id: CloudId): Record<string, string> {
+    if(id === "local") return {};
     const key = this.key(id);
     if (!key)
       throw Error(
@@ -101,17 +105,24 @@ export class CloudModels {
         redirect: "error",
         headers: { ...this.headers(id), "Content-Type": "application/json" },
         ...(body ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(body ? 90000 : 20000),
+        signal: AbortSignal.timeout(body ? (id === "local" || id === "huggingface" ? 300000 : 90000) : 20000),
       });
     } catch (e) {
+      if (id === "local") throw Error("Start your local llama.cpp server on port 8080, then connect it in AI providers.");
       if (!this.key(id)) throw e;
       throw Error(
         `${cloudProviders[id].name} could not be reached. Check your internet connection.`,
       );
     }
-    if (!response.ok)
+    if (!response.ok) {
+      if (id === "huggingface" && response.status === 403) {
+        const detail = await response.text();
+        if (/Cloudflare|Access denied/i.test(detail)) throw Error("Together blocked this connection. Try another Hugging Face provider or retry from a supported network.");
+      }
       throw Error(
-        response.status === 429
+        response.status === 402
+          ? `${cloudProviders[id].name} needs inference credits or billing enabled.`
+          : response.status === 429
           ? `${cloudProviders[id].name} quota or rate limit reached. Check your API plan.`
           : [401, 403].includes(response.status)
             ? `${cloudProviders[id].name} rejected this key or its permissions.`
@@ -119,6 +130,7 @@ export class CloudModels {
               ? "That model is not available to this API key. Refresh the model list and choose another."
               : `${cloudProviders[id].name} returned an error (${response.status}). Please retry.`,
       );
+    }
     return response.json() as Promise<any>;
   }
   async manage(raw: unknown) {
@@ -173,6 +185,8 @@ export class CloudModels {
       !ids.includes("gemini-3.1-flash-live-preview")
     )
       ids.unshift("gemini-3.1-flash-live-preview");
+    if(value.provider === "huggingface" && ids.includes("meta-models/Muse-Glimmer-30B"))
+      ids=["meta-models/Muse-Glimmer-30B:together",...ids];
     if (!ids.length)
       throw Error(
         "The key was accepted, but no compatible text models were returned.",
@@ -183,7 +197,7 @@ export class CloudModels {
     return this.status();
   }
   resolve(value: string) {
-    const match = value.match(/^(google|openai|xai|deepseek|anthropic):(.+)$/);
+    const match = value.match(/^(google|openai|xai|deepseek|anthropic|huggingface|local):(.+)$/);
     const id = providerId.parse(
       match?.[1] || (value.startsWith("gemini-") ? "google" : undefined),
     );
@@ -244,11 +258,14 @@ export class CloudModels {
           { role: "system", content: guidance },
           { role: "user", content: question },
         ],
-        max_tokens: 4096,
+        max_tokens: id === "local" || id === "huggingface" ? 8192 : 4096,
+        ...(id === "local" ? {temperature:1,top_p:.95,top_k:64,chat_template_kwargs:{reasoning_strength:"low"}} : {}),
         stream: false,
       });
       answer = result.choices?.[0]?.message?.content || "";
     }
+    if ((id === "local" || id === "huggingface") && /to=self<\|message\|>|\[Start thinking\]/.test(answer))
+      throw Error("The server returned reasoning in its answer. Use a recent llama.cpp build with --jinja and separate reasoning_content.");
     if (!answer.trim())
       throw Error(
         "The model returned no spoken text. Choose another model or retry.",

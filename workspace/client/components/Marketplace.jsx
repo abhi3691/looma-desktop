@@ -13,6 +13,7 @@ import {
 } from 'react-icons/fi';
 import {
   desktopService,
+  saveSettings,
   authorizeConnector,
   disconnectConnector,
   fetchConnectionStatus,
@@ -97,6 +98,10 @@ function AppIcon({ app }) {
 }
 
 export default function Marketplace({ onOpenSettings }) {
+  const [setupApp, setSetupApp] = useState(null);
+  const [connectorKey, setConnectorKey] = useState('');
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState('');
   const [apps, setApps] = useState(CURATED_APPS);
   const [connected, setConnected] = useState([]);
   const [search, setSearch] = useState('');
@@ -159,8 +164,8 @@ export default function Marketplace({ onOpenSettings }) {
 
     const isOn = connected.includes(app.slug);
     if (!configured) {
-      onOpenSettings?.();
-      setNotice('Add a Composio key in Settings, or connect your own MCP server above.');
+      setSetupApp(app);
+      setSetupError('');
       return;
     }
 
@@ -187,6 +192,26 @@ export default function Marketplace({ onOpenSettings }) {
     }
   };
 
+  const connectSelected = async (event) => {
+    event.preventDefault();
+    if (!setupApp || setupBusy) return;
+    setSetupBusy(true); setSetupError('');
+    try {
+      if (connectorKey.trim()) {
+        const saved = await saveSettings({composio_api_key:connectorKey.trim()});
+        if (!saved.composio_api_key_configured) throw new Error('Connector key could not be saved.');
+        setConfigured(true);
+      } else if (!configured) throw new Error('Enter your Composio API key to continue.');
+      setConnectorKey('');
+      const result = await authorizeConnector(setupApp.slug);
+      if (!result.url) throw new Error('No authorization link was returned.');
+      await desktopService('open-auth', {url:result.url});
+      setNotice(`Finish ${setupApp.label} authorization in your browser, then refresh its connection status.`);
+      setSetupApp(null); setRefreshToken(value=>value+1);
+    } catch (err) { setConnectorKey(''); setSetupError(err.message || 'Could not connect this app.'); }
+    finally { setSetupBusy(false); }
+  };
+
   const visible = apps.filter((app) => {
     if (!search) return true;
     const query = search.toLowerCase();
@@ -195,6 +220,20 @@ export default function Marketplace({ onOpenSettings }) {
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#faf6ee] select-none font-sans text-zinc-100">
+      {setupApp && <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-5">
+        <form role="dialog" aria-modal="true" aria-labelledby="connector-setup-title" onSubmit={connectSelected} className="w-full max-w-md rounded-2xl border border-[#eadbc7] bg-[#fffdf8] p-6 space-y-4 shadow-xl">
+          <h2 id="connector-setup-title" className="font-semibold">Set up {setupApp.label}</h2>
+          <p className="text-sm">{setupApp.blurb}</p>
+          <p className="text-xs text-[#89735e]">Composio connects this account. Its API key is shared across your app connectors; each app has its own authorization.</p>
+          <label className="block text-sm" htmlFor="app-connector-key">Composio API key</label>
+          <input id="app-connector-key" type="password" autoComplete="new-password" value={connectorKey} onChange={event=>setConnectorKey(event.target.value)} disabled={setupBusy} placeholder={configured ? 'Key saved — leave blank to keep' : 'Paste Composio API key'} className="w-full border border-[#eadbc7] rounded-xl p-3" />
+          {setupError && <p role="alert" className="text-sm text-red-700">{setupError}</p>}
+          <div className="flex justify-end gap-3">
+            <button type="button" disabled={setupBusy} onClick={()=>{setSetupApp(null);setConnectorKey('');}} className="p-2">Cancel</button>
+            <button disabled={setupBusy || (!configured && !connectorKey.trim())} className="rounded-xl bg-[#eadbc7] p-3 disabled:opacity-50">{setupBusy ? 'Connecting…' : `Connect ${setupApp.label}`}</button>
+          </div>
+        </form>
+      </div>}
       <div className="px-6 py-4 border-b border-[#18181c] flex items-center justify-between gap-4 flex-shrink-0">
         <div>
           <div className="flex items-center gap-2">
@@ -236,17 +275,8 @@ export default function Marketplace({ onOpenSettings }) {
           <span>
             {configured
               ? 'Connect an app to open its provider authorization flow. No account is connected until you complete that flow.'
-              : 'For additional apps below, add a Composio API key in Settings. Your MCP connections work independently.'}
+              : 'Choose Set up beside an app to add your connector key and authorize that account. MCP connections work independently.'}
           </span>
-          {!configured && onOpenSettings && (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="ml-auto flex items-center gap-1 text-[#79563c] hover:text-white font-semibold flex-shrink-0"
-            >
-              <FiSettings /> Settings
-            </button>
-          )}
         </div>
       </div>
 
@@ -296,7 +326,7 @@ export default function Marketplace({ onOpenSettings }) {
                   suppressHydrationWarning={true}
                   type="button"
                   disabled={Boolean(busySlug)}
-                  onClick={() => toggle(app)}
+                  onClick={() => { if (isOn) toggle(app); else { setSetupApp(app); setConnectorKey(''); setSetupError(''); } }}
                   className={`w-28 flex-shrink-0 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 ${
                     isOn
                       ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'

@@ -375,3 +375,29 @@ body.pet-mode,
   border: 0;
   box-shadow: none;
 }
+
+/* Blender photographic puppet atlas: 6 columns × 8 state rows. */
+.floating .realistic-dog {
+  width: 150px;
+  height: 200px;
+  background-image: url('../public/looma-realistic.webp');
+  background-size: 900px 1600px;
+  background-repeat: no-repeat;
+  --puppy-row: 0px;
+  animation: realistic-frames 1.4s steps(6) infinite;
+  transform-origin: 50% 90%;
+}
+.state-walking .realistic-dog { --puppy-row: -200px; }
+.state-watching .realistic-dog { --puppy-row: -400px; }
+.state-thinking .realistic-dog, .voice-thinking .realistic-dog { --puppy-row: -600px; }
+.state-warning .realistic-dog { --puppy-row: -800px; }
+.state-talking .realistic-dog, .voice-speaking .realistic-dog { --puppy-row: -1000px; }
+.state-happy .realistic-dog, .gesture-play .realistic-dog { --puppy-row: -1200px; }
+.state-sleeping .realistic-dog { --puppy-row: -1400px; animation-duration: 3s; }
+.gesture-stretch .realistic-dog { animation: realistic-frames 1.4s steps(6) infinite, dog-stretch 2s ease-in-out 3; }
+.gesture-spin .realistic-dog { animation: realistic-frames 1.4s steps(6) infinite, dog-spin 1.8s ease-in-out 3; }
+@keyframes realistic-frames { from {background-position: 0 var(--puppy-row);} to {background-position: -900px var(--puppy-row);} }
+@media (prefers-reduced-motion: reduce) { .floating .realistic-dog { animation: none; background-position: 0 var(--puppy-row); } }
+.floating canvas.puppy-3d {width:210px;height:210px;display:block;margin:auto;}
+
+.floating img.puppy-portrait { width:210px; height:210px; object-fit:contain; }

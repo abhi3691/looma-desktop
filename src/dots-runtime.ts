@@ -28,6 +28,7 @@ export class DotsRuntime {
           "/models",
           "/providers",
           "/mcp",
+          "/home",
           "/open-auth",
           "/companion",
         ].includes(req.url || "") ||

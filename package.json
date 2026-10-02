@@ -1,6 +1,6 @@
 {
   "name": "careless-ai",
-  "version": "0.3.4",
+  "version": "1.0.0",
   "description": "Your private desktop companion",
   "author": "Looma",
   "license": "MIT",
@@ -27,11 +27,13 @@
     "@modelcontextprotocol/sdk": "^1.31.0",
     "ajv": "^8.17.1",
     "sql.js": "^1.13.0",
+    "three": "^0.186.1",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/sql.js": "^1.4.9",
+    "@types/three": "^0.186.0",
     "electron": "^42.0.0",
     "electron-builder": "^26.0.0",
     "esbuild": "^0.25.0",

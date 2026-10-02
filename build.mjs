@@ -14,6 +14,7 @@ await build({
   entryPoints: ["src/renderer.ts"],
   bundle: true,
   platform: "browser",
+  loader: {".glb":"binary"},
   outfile: "dist/renderer.js",
 });
 await copyFile("public/index.html", "dist/index.html");

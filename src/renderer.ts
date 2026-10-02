@@ -1,6 +1,6 @@
 import { replyHTML } from "./reply-view";
 import { VoiceController } from "./voice-ui";
-import { dog } from "./dog";
+import { mountPuppy } from "./puppy-3d";
 import { type Snapshot } from "./shared";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let data: Snapshot;
@@ -75,7 +75,8 @@ function render() {
           ? "Listening"
           : "Ready";
   document.documentElement.className = document.body.className = "pet-mode";
-  root.innerHTML = `<div class="floating ${petExpanded ? "expanded" : ""} voice-${phase.toLowerCase()} gesture-${data.gesture} state-${data.state.toLowerCase()}"><div class="pet-bubble" id="petTranscript" role="button" tabindex="0" title="Show or hide the last reply">${petExpanded && petReply ? replyHTML(petReply) : esc(phase === "Ready" ? (voice.waking ? "Say Hi Looma" : !data.settings.voiceInput || !data.settings.wakeWord ? "Microphone off" : !data.runtime.speechModelAvailable ? "Preparing speech model…" : !data.runtime.whisperAvailable ? "Speech runtime needed" : voice.error || "Starting microphone…") : phase + "…")}</div><div id="petCharacter" aria-label="Double-click to open your workspace">${dog()}</div></div><div id="toast"></div>`;
+  root.innerHTML = `<div class="floating ${petExpanded ? "expanded" : ""} voice-${phase.toLowerCase()} gesture-${data.gesture} state-${data.state.toLowerCase()}"><div class="pet-bubble" id="petTranscript" role="button" tabindex="0" title="Show or hide the last reply">${petExpanded && petReply ? replyHTML(petReply) : esc(phase === "Ready" ? (voice.waking ? "Say Hi Looma" : !data.settings.voiceInput || !data.settings.wakeWord ? "Microphone off" : !data.runtime.speechModelAvailable ? "Preparing speech model…" : !data.runtime.whisperAvailable ? "Speech runtime needed" : voice.error || "Starting microphone…") : phase + "…")}</div><div id="petCharacter" aria-label="Double-click to open your workspace"></div></div><div id="toast"></div>`;
+  mountPuppy(document.querySelector<HTMLElement>("#petCharacter")!,data.state,data.gesture,phase,data.settings.puppyAppearance);
   const toggleTranscript = () =>
     void run(async () => {
       petExpanded = !petExpanded;
@@ -170,7 +171,7 @@ async function refresh(force = false) {
   });
   const next = await api.snapshot();
   const changed =
-    !data || next.state !== data.state || next.gesture !== data.gesture;
+    !data || next.state !== data.state || next.gesture !== data.gesture || next.settings.puppyAppearance !== data.settings.puppyAppearance;
   const enabled = !data?.settings.wakeWord && next.settings.wakeWord;
   data = next;
   if (enabled) voice.manuallyStopped = false;

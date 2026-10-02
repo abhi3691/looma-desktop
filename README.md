@@ -85,3 +85,34 @@ The Mac bundle includes the online speaker executable. The playful voice uses Ma
 ### Additional release installers
 
 Run the Windows installer and Intel Mac installer workflows from GitHub Actions with an existing release tag (for example `v0.3.4`). Each workflow builds its server, speaker and Whisper executable on the target OS, verifies recognition-model checksums, runs typecheck and unit tests, and uploads the installer and SHA-256 checksum to that release. Windows packages target x64; Intel Mac packages target x86_64. Choose the `arm64` DMG for Apple Silicon. These early builds are unsigned on Windows and ad-hoc signed on Mac.
+
+### Real 3D companion development
+
+The pet renderer loads an embedded skeletal GLB with an animation mixer, transparent WebGL canvas and 30 FPS cap. `scripts/build-baby-puppy.py` builds an editable Blender prototype with independent limbs, ears, jaw and tail. This procedural prototype is stylized and **does not match the requested photographic puppy**; it should not be treated as the final approved artwork.
+
+For the requested realism, supply a licensed model with detailed fur/skin materials and facial controls. Retarget its clips in Blender to `Idle`, `Walking`, `Watching`, `Thinking`, `Warning`, `Talking`, `Happy`, `Sleeping`, plus optional `Sit`, `Stretch`, `Spin`, `Cuddle`. Export an embedded GLB and run `node scripts/import-puppy-model.mjs MODEL.glb`. The importer rejects missing rigs, required clips and external resources. Do not distribute a marketplace asset or its editable source without checking its licence. The rejected photographic puppet files are development experiments, not a true 3D model.
+
+
+## JARVIS Stage 01 foundation
+
+The supplied foundation PDF guides a modular local assistant: model responses, local actions, and room-device control remain separate. Smart room settings now connect to a LAN Home Assistant server. Add spoken aliases for lights, switches, scenes/scripts, climate or media entities, or learned Broadlink remote commands. Home Assistant must already be installed and devices paired; Looma does not discover or provision Broadlink hardware directly.
+
+Room credentials are encrypted using the operating system's secure storage. Named room commands use deterministic local routing and never go to the online model. A successful service call reports dispatch, not verified physical appliance operation. Built-in local actions include app opening, selected-folder filename search, tasks, reminders, and optional daily briefings. Scenes/scripts can provide routines. General autonomous desktop operation and context-triggered room automation are not implemented.
+
+Examples: “turn on desk lamp”, “dim desk lamp to 35 percent”, “turn projector off”, “run movie time”. Save a matching alias and enable room commands first. Use a Home Assistant long-lived token; device listings display friendly names without raw JSON.
+
+The new Blender puppy remains a review candidate in `assets/natural-puppy-friendly`, with 28 bones and 12 actions. Its dense native Blender hair does not export into GLB; the desktop version uses skinned ribbons and baked coat maps. This candidate has not replaced the installed avatar.
+
+### Golden puppy update (0.3.9)
+
+The desktop companion now loads the supplied golden puppy as a skinned 3D model with a repaired surface, higher-detail front texture, portable fur and simple animated states. In the macOS **Looma → Puppy appearance** menu, choose **Animated 3D puppy** or **Original puppy picture**. The latter also provides a fallback when 3D rendering is unavailable.
+
+This asset is an approximation: its seated stepping is not a natural four-legged gait, and the sides and facial deformation still need refinement. Editable source and visual checks are in `assets/user-golden/looma-golden-desktop.blend` and `assets/user-golden/QUALITY-REVIEW.md`.
+
+### Looma 1.0.0
+
+The original cartoon puppy is the default; the 3D character remains optional in the app menu. Interrupt a spoken reply, then say “continue” to resume cached audio at the saved position. Native system voices resume from the last reported word boundary.
+
+Settings → AI providers includes Hugging Face (`HF_TOKEN`, encrypted on this device) and a local llama.cpp connection. Muse Glimmer routes to `meta-models/Muse-Glimmer-30B:together`; provider access and billing still apply. A token supplied through `HF_TOKEN` at launch is imported into encrypted storage and removed from the environment before child processes start. It is never checked into the repository.
+
+Local Muse GGUF requires downloaded weights and a current llama.cpp server on loopback port 8080, with its chat template enabled. Reasoning content is separated from spoken output.

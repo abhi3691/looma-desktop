@@ -5,13 +5,20 @@ import { SONG_HEADER } from "./song";
 import { spokenReply } from "./reply-view";
 import { encodeWav } from "./audio";
 import type { Settings } from "./shared";
+type SpeechSession = ({kind:"audio";clips:Promise<string>[]} | {kind:"local";chunks:string[];voice:SpeechSynthesisVoice}) & {
+  index:number; offset:number; settings:Settings; released:boolean;
+};
 export class VoiceController {
+  private activeSpeech?: SpeechSession;
+  private pausedSpeech?: SpeechSession;
   private opening = false;
   private captureGeneration = 0;
   private bargeStream?: MediaStream;
   private bargeContext?: AudioContext;
   private bargeProcessor?: ScriptProcessorNode;
   private bargeActive = false;
+  private bargeGeneration = 0;
+  private pendingTranscripts = 0;
   private bargeInterrupted = false;
   get listening() {
     return this.recording || this.bargeActive;
@@ -74,6 +81,7 @@ export class VoiceController {
     clearTimeout(this.restart);
     this.cancelRecording();
     this.stopSpeech();
+    this.clearPausedSpeech();
   }
   recoverListening() {
     if (
@@ -231,7 +239,7 @@ export class VoiceController {
     if (!this.recording) return;
     const chunks = this.chunks;
     const wasWake = this.waking;
-    this.transcribing = true;
+    this.pendingTranscripts++;this.transcribing = true;
     this.cancelRecording();
     try {
       if (!this.waking) this.notify("Transcribing on this device…");
@@ -244,7 +252,7 @@ export class VoiceController {
       });
       this.lastHeard = text.slice(0, 400);
       if (wasWake && !this.waking) return;
-      if (wasWake && this.handleControl(text)) return;
+      if (await this.handleControl(text)) return;
       if (this.conversing) {
         const command = text
           .replace(/^(?:hi|hey|hello|hai)[,\s]*(?:looma|luma|ലൂമ)[,\s.!]*/i, "")
@@ -285,7 +293,7 @@ export class VoiceController {
       }
     } finally {
       this.chunks = [];
-      this.transcribing = false;
+      this.pendingTranscripts=Math.max(0,this.pendingTranscripts-1);this.transcribing=this.pendingTranscripts>0;
       this.changed();
       if (this.waking && this.wakeSettings && !this.bargeActive)
         this.restart = setTimeout(() => {
@@ -294,8 +302,18 @@ export class VoiceController {
         }, 300);
     }
   }
-  private handleControl(text: string) {
+  private async handleControl(text: string) {
     const control = voiceControl(text);
+    if (control === "resume") {
+      await this.resumeSpeech();
+      return true;
+    }
+    if (control === "pause") {
+      this.pauseSpeech();
+      this.conversing = true;
+      this.notify("Paused. Say continue when you’re ready.");
+      return true;
+    }
     if (control === "mute") {
       this.stopWake();
       this.notify("മൈക്രോഫോൺ ഓഫ് ചെയ്തു.");
@@ -311,6 +329,7 @@ export class VoiceController {
     return false;
   }
   private stopBargeCapture() {
+    this.bargeGeneration++;
     this.bargeActive = false;
     this.bargeStream?.getTracks().forEach((track) => track.stop());
     this.bargeProcessor?.disconnect();
@@ -349,13 +368,15 @@ export class VoiceController {
       let lastSound = Date.now();
       let started = 0;
       let completing = false;
+      const capture=++this.bargeGeneration;
+      let interrupted=false;
       this.bargeActive = true;
       this.bargeInterrupted = false;
       const finish = async () => {
         if (completing) return;
         completing = true;
         this.stopBargeCapture();
-        this.transcribing = true;
+        this.pendingTranscripts++;this.transcribing = true;
         this.changed();
         try {
           const text = await window.careless.voice({
@@ -363,13 +384,13 @@ export class VoiceController {
             audio: encodeWav(chunks),
           });
           this.lastHeard = text.slice(0, 400);
-          if (this.waking && !this.handleControl(text))
+          if (this.waking && !(await this.handleControl(text)))
             await this.transcript(text);
         } catch (e) {
           if (!String(e).includes("No speech detected")) this.notify(String(e));
         } finally {
-          this.transcribing = false;
-          this.bargeInterrupted = false;
+          this.pendingTranscripts=Math.max(0,this.pendingTranscripts-1);this.transcribing=this.pendingTranscripts>0;
+          if(!this.bargeActive)this.bargeInterrupted = false;
           this.changed();
           if (this.waking && this.wakeSettings)
             this.restart = setTimeout(() => {
@@ -379,7 +400,7 @@ export class VoiceController {
         }
       };
       processor.onaudioprocess = (event) => {
-        if (!this.bargeActive) return;
+        if (!this.bargeActive || capture!==this.bargeGeneration) return;
         const frame = new Float32Array(event.inputBuffer.getChannelData(0));
         const rms = Math.sqrt(
           frame.reduce((sum, x) => sum + x * x, 0) / frame.length,
@@ -388,15 +409,15 @@ export class VoiceController {
         this.lastAudioAt = Date.now();
         chunks.push(frame);
         if (Date.now() - captureStarted <= 700) detector.calibrate(rms);
-        if (!this.bargeInterrupted) {
+        if (!interrupted) {
           if (
             Date.now() - captureStarted > 700 &&
             detector.push(rms, frame.length / 16, isHumanVoice(frame))
           ) {
-            this.bargeInterrupted = true;
+            interrupted=true;this.bargeInterrupted = true;
             started = Date.now();
             lastSound = started;
-            this.stopSpeech(true);
+            this.pauseSpeech(true);
             this.notify("I’m listening…");
             void window.careless.state("Watching");
           } else if (chunks.length > 16) chunks.shift();
@@ -415,18 +436,59 @@ export class VoiceController {
       this.notify(this.error);
     }
   }
-  stopSpeech(keepMicrophone = false) {
+  /** Stop immediately, retaining the last audible position for a later “continue”. */
+  pauseSpeech(keepMicrophone = false) {
+    this.stopSpeech(keepMicrophone, true);
+  }
+  private releaseSpeech(session: SpeechSession) {
+    if (session.released) return;
+    session.released = true;
+    if (session.kind === "audio")
+      for (const clip of session.clips)
+        void clip.then(URL.revokeObjectURL).catch(() => {});
+  }
+  private clearPausedSpeech() {
+    if (this.pausedSpeech) this.releaseSpeech(this.pausedSpeech);
+    this.pausedSpeech = undefined;
+  }
+  stopSpeech(keepMicrophone = false, remember = false) {
+    const active = this.activeSpeech;
+    if (active) {
+      if (remember) {
+        if (active.kind === "audio" && this.audio && this.audio.readyState >= 1)
+          active.offset = Math.max(0, this.audio.currentTime || 0);
+        this.clearPausedSpeech();
+        this.pausedSpeech = active;
+      } else this.releaseSpeech(active);
+      this.activeSpeech = undefined;
+    }
     if (!keepMicrophone) this.stopBargeCapture();
     this.generation++;
     this.completeSpeech?.();
     this.completeSpeech = undefined;
     this.speaking = false;
-    if (this.audio) {
-      this.audio.pause();
-      this.audio.dispatchEvent(new Event("ended"));
-    }
+    this.audio?.pause();
     this.audio = undefined;
     speechSynthesis.cancel();
+    this.changed();
+  }
+  async resumeSpeech() {
+    const session = this.pausedSpeech;
+    if (!session || session.released) {
+      this.notify("There’s no paused reply to continue.");
+      return false;
+    }
+    const current = await window.careless.snapshot();
+    if (!current.settings.voiceOutput) {
+      this.notify("Enable spoken replies in Settings to continue.");
+      return false;
+    }
+    // A mute/another interruption while settings were loading invalidates this request.
+    if (this.pausedSpeech !== session || session.released) return false;
+    this.pausedSpeech = undefined;
+    this.conversing = true;
+    await this.playSpeech(session);
+    return true;
   }
   async speak(text: string, settings: Settings) {
     if (!settings.voiceOutput) {
@@ -446,120 +508,103 @@ export class VoiceController {
       if (preparing !== this.generation) return;
     }
     text = spokenReply(text);
+    if (!text.trim()) return;
+    const voices = speechSynthesis.getVoices().filter((v) => v.localService);
+    const language = /[\u0D00-\u0D7F]/.test(text) ? "ml" : "en";
+    const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(language));
+    const selected = matching.find((v) => v.voiceURI === settings.voiceName);
+    const feminine = matching.find((v) => /Samantha|Karen|Moira|Tessa|Veena|Zira|Heera|Hazel|Jenny|Aria/i.test(v.name));
+    const local = language === "ml" && settings.voiceStyle === "female" && !selected
+      ? undefined : selected ?? (settings.voiceStyle === "female" ? feminine : matching[0]);
+    if (local && !singing && settings.speechProvider !== "edge") {
+      await this.playSpeech({kind:"local", chunks:speechChunks(text), index:0, offset:0, voice:local, settings:{...settings}, released:false});
+    } else {
+      // Cache audio for this turn. Resume seeks within the same clip, without another
+      // model request or synthesis call. URLs are released on completion/replacement/mute.
+      const chunks = singing || settings.speechProvider === "edge" ? [text] : speechChunks(text);
+      const clips = chunks.map(async chunk => {
+        const result = await window.careless.voice({action:singing ? "sing" : "synthesize",text:chunk});
+        if (result.warning) this.notify(result.warning);
+        const bytes:Uint8Array = result instanceof Uint8Array ? result : result.audio;
+        const mime = result instanceof Uint8Array ? "audio/wav" : result.mime;
+        return URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer],{type:mime}));
+      });
+      clips.forEach(c=>void c.catch(()=>{}));
+      await this.playSpeech({kind:"audio",clips,index:0,offset:0,settings:{...settings},released:false});
+    }
+  }
+  private async playSpeech(session: SpeechSession) {
     this.stopSpeech();
     const epoch = this.generation;
+    const settings = session.settings;
+    this.activeSpeech = session;
     this.speaking = true;
     this.changed();
     try {
       await window.careless.state("Talking");
-      const voices = speechSynthesis.getVoices().filter((v) => v.localService);
-      const language = /[\u0D00-\u0D7F]/.test(text) ? "ml" : "en";
-      const matching = voices.filter((v) =>
-        v.lang.toLowerCase().startsWith(language),
-      );
-      const selected = matching.find((v) => v.voiceURI === settings.voiceName);
-      const feminine = matching.find((v) =>
-        /Samantha|Karen|Moira|Tessa|Veena|Zira|Heera|Hazel|Jenny|Aria/i.test(
-          v.name,
-        ),
-      );
-      const local =
-        language === "ml" && settings.voiceStyle === "female" && !selected
-          ? undefined
-          : (selected ??
-            (settings.voiceStyle === "female" ? feminine : matching[0]));
-      if (local && !singing && settings.speechProvider !== "edge") {
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => finish(Error("Speech playback timed out")),
-            90000,
-          );
-          const finish = (error?: Error) => {
-            clearTimeout(timer);
-            error ? reject(error) : resolve();
-          };
-          this.completeSpeech = () => finish();
-          const utterance = new SpeechSynthesisUtterance(text.slice(0, 1500));
-          utterance.voice = local;
-          utterance.lang = local.lang;
-          utterance.rate = 0.95;
-          utterance.pitch = settings.cartoonVoice
-            ? 1.4
-            : settings.voiceStyle === "female"
-              ? 1.08
-              : 1;
-          utterance.onend = () => finish();
-          utterance.onerror = () =>
-            finish(Error("Speech playback interrupted"));
-          utterance.onstart = () =>
-            void this.beginBargeCapture(epoch, settings);
-          speechSynthesis.speak(utterance);
-        });
-      } else {
-        // One neural utterance preserves pronunciation and sentence flow.
-        const chunks = singing || settings.speechProvider === "edge" ? [text] : speechChunks(text);
-        // Synthesize every chunk at once so the first one can start playing
-        // while the rest are still being generated.
-        const clips = chunks.map(async (chunk) => {
-          const result = await window.careless.voice({
-            action: singing ? "sing" : "synthesize",
-            text: chunk,
+      if (epoch !== this.generation) return;
+      if (session.kind === "local") {
+        for (;session.index < session.chunks.length;session.index++) {
+          const start = session.offset;
+          const text = session.chunks[session.index].slice(start);
+          await new Promise<void>((resolve,reject)=>{
+            let finished=false;
+            const timer=setTimeout(()=>finish(Error("Speech playback timed out")),90000);
+            const finish=(error?:Error)=>{if(finished)return;finished=true;clearTimeout(timer);error?reject(error):resolve();};
+            this.completeSpeech=()=>finish();
+            const utterance=new SpeechSynthesisUtterance(text);
+            utterance.voice=session.voice;utterance.lang=session.voice.lang;
+            utterance.rate=.95;utterance.pitch=settings.cartoonVoice?1.4:settings.voiceStyle==="female"?1.08:1;
+            // Resume at the last word boundary. Engines without boundaries repeat only
+            // the current sentence, never the entire answer.
+            utterance.onboundary=(event)=>{if(epoch===this.generation)session.offset=start+Math.max(0,event.charIndex);};
+            utterance.onend=()=>finish();
+            utterance.onerror=()=>finish(Error("Speech playback interrupted"));
+            utterance.onstart=()=>{if(epoch===this.generation)void this.beginBargeCapture(epoch,settings);};
+            speechSynthesis.speak(utterance);
           });
-          if (result.warning) this.notify(result.warning);
-          const bytes: Uint8Array =
-            result instanceof Uint8Array ? result : result.audio;
-          const mime = result instanceof Uint8Array ? "audio/wav" : result.mime;
-          return URL.createObjectURL(
-            new Blob([new Uint8Array(bytes).buffer], { type: mime }),
-          );
-        });
-        clips.forEach((c) => c.catch(() => {}));
-        try {
-          for (let i = 0; i < clips.length; i++) {
-            const url = await clips[i];
-            if (epoch !== this.generation) return;
-            this.audio = new Audio(url);
-            const playback = this.audio;
-            await new Promise<void>((resolve, reject) => {
-              const timer = setTimeout(() => {
-                playback.pause();
-                finish(Error("Speech playback timed out"));
-              }, 90000);
-              const finish = (error?: Error) => {
-                clearTimeout(timer);
-                error ? reject(error) : resolve();
-              };
-              this.completeSpeech = () => finish();
-              playback.onended = () => finish();
-              playback.onerror = () => finish(Error("Speech playback failed"));
-              void playback
-                .play()
-                .then(() => {
-                  if (i === 0) void this.beginBargeCapture(epoch, settings);
-                })
-                .catch((error) => finish(error));
-            });
-            if (epoch !== this.generation) return;
-          }
-        } finally {
-          for (const c of clips)
-            void c.then(URL.revokeObjectURL).catch(() => {});
+          if(epoch!==this.generation)return;
+          session.offset=0;
+        }
+      } else {
+        for (;session.index<session.clips.length;session.index++) {
+          const url=await session.clips[session.index];
+          if(epoch!==this.generation)return;
+          const playback=new Audio(url);playback.preload="auto";this.audio=playback;
+          await new Promise<void>((resolve,reject)=>{
+            let finished=false;
+            const timer=setTimeout(()=>{playback.pause();finish(Error("Speech playback timed out"));},90000);
+            const finish=(error?:Error)=>{if(finished)return;finished=true;clearTimeout(timer);error?reject(error):resolve();};
+            this.completeSpeech=()=>finish();
+            playback.onended=()=>finish();playback.onerror=()=>finish(Error("Speech playback failed"));
+            const start=()=>{
+              if(epoch!==this.generation||finished)return;
+              try {
+                if(session.offset>0)playback.currentTime=Number.isFinite(playback.duration)?Math.min(session.offset,Math.max(0,playback.duration-.01)):session.offset;
+                void playback.play().then(()=>{
+                  if(epoch===this.generation)void this.beginBargeCapture(epoch,settings);
+                  else playback.pause();
+                }).catch(error=>finish(error));
+              } catch(error){finish(error instanceof Error?error:Error(String(error)));}
+            };
+            if(session.offset>0&&playback.readyState<1)playback.addEventListener("loadedmetadata",start,{once:true});
+            else start();
+          });
+          if(epoch!==this.generation)return;
+          session.offset=0;
         }
       }
     } catch (e) {
-      if (epoch === this.generation)
-        this.notify("Could not speak. " + String(e));
+      if(epoch===this.generation)this.notify("Could not speak. "+String(e));
     } finally {
-      if (epoch === this.generation) {
-        this.stopBargeCapture();
-        this.completeSpeech = undefined;
-        this.speaking = false;
-        this.changed();
-        const current = await window.careless.snapshot();
-        if (current.state === "Talking")
-          await window.careless.state(
-            settings.paused || current.resting ? "Sleeping" : "Idle",
-          );
+      // An old playback task must never dispose or reset a session now owned by resume.
+      if(epoch===this.generation){
+        this.activeSpeech=undefined;this.releaseSpeech(session);
+        this.stopBargeCapture();this.completeSpeech=undefined;this.audio=undefined;
+        this.speaking=false;this.changed();
+        const current=await window.careless.snapshot();
+        if(epoch===this.generation&&current.state==="Talking")
+          await window.careless.state(settings.paused||current.resting?"Sleeping":"Idle");
       }
     }
   }

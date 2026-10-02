@@ -1,6 +1,11 @@
+import { assistantIntent, type AssistantIntent } from "./assistant-actions";
+import { readdir } from "node:fs/promises";
+import { motionStep } from "./pet-motion";
 import { parseSettingsPatch } from "./settings-patch";
 import { CloudModels } from "./cloud-models";
 let cloudModels: CloudModels;
+import { HomeControl, homeIntent } from "./home-control";
+let homeControl: HomeControl;
 const desktopHandlers = new Map<string, (value: any) => any>();
 let desktopMcp: (value: unknown) => Promise<unknown>;
 import { DotsRuntime } from "./dots-runtime";
@@ -47,14 +52,17 @@ let gestureTimer: ReturnType<typeof setTimeout>;
 function performGesture(
   action: NonNullable<ReturnType<typeof companionCommand>>,
 ) {
+  stopDesktopPlay();
   clearTimeout(gestureTimer);
   gesture = action.gesture;
   resting = action.gesture === "sleep";
   setState(action.state);
+  if (["walk", "fetch", "play"].includes(action.gesture)) startDesktopPlay(action.gesture === "walk" ? "walk" : "fetch");
   if (!resting)
     gestureTimer = setTimeout(() => {
       gesture = "";
-    }, 9000);
+      stopDesktopPlay();
+    }, ["walk", "fetch", "play"].includes(action.gesture) ? 30000 : 9000);
 }
 let voiceHealth = {
   recording: false,
@@ -71,6 +79,70 @@ let connections: Connections;
 let credentialsPersistent = false;
 const exec = promisify(execFile);
 let pet: BrowserWindow, memory: Memory;
+let ball: BrowserWindow | undefined;
+let motionTimer: ReturnType<typeof setInterval> | undefined;
+function stopDesktopPlay() {
+  if (motionTimer) clearInterval(motionTimer);
+  motionTimer = undefined;
+  if (ball && !ball.isDestroyed()) ball.destroy();
+  ball = undefined;
+}
+function startDesktopPlay(mode: "walk" | "fetch") {
+  if (!pet || pet.isDestroyed()) return;
+  const area=screen.getDisplayMatching(pet.getBounds()).workArea;
+  let target={x:area.x+40,y:area.y+area.height-pet.getBounds().height-15};
+  if(mode === "fetch") {
+    ball=new BrowserWindow({width:44,height:44,frame:false,transparent:true,alwaysOnTop:true,skipTaskbar:true,resizable:false,focusable:false,backgroundColor:"#00000000",webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    ball.setPosition(area.x+Math.round(area.width*.5),area.y+area.height-70);
+    void ball.loadFile(join(app.getAppPath(),"public/ball.html"));
+    ball.on("closed",()=>{ball=undefined;});
+  }
+  motionTimer=setInterval(()=>{
+    if(pet.isDestroyed() || !pet.isVisible()) { stopDesktopPlay(); return; }
+    const bounds=pet.getBounds();
+    if(ball && !ball.isDestroyed()) {
+      const b=ball.getBounds(); target={x:b.x-bounds.width/2,y:b.y-bounds.height+40};
+    }
+    const next=motionStep(bounds,target,area);
+    pet.setPosition(next.x,next.y);
+    if(next.arrived && mode === "walk") target={x:target.x<area.x+area.width/2?area.x+area.width-bounds.width-30:area.x+30,y:target.y};
+  },40);
+}
+let assistantTimer: ReturnType<typeof setInterval> | undefined;
+function localBriefing() {
+  const tasks=memory.assistantItems("task"), reminders=memory.assistantItems("reminder"), work=memory.dailyWork();
+  return `Your local briefing: ${tasks.length} open tasks and ${reminders.length} reminders.\n\n${tasks.map(t=>`${t.id}. ${t.text}`).join("\n") || "No local tasks."}\n\nToday's work: ${work.map(w=>w.text).join("; ") || "No work notes yet."}\nAsk about connected tasks separately to check your MCP service.`;
+}
+async function runAssistant(action:AssistantIntent):Promise<string> {
+  if(action.kind==="task") {memory.assistantAdd("task",action.text);return `Added to your local tasks: ${action.text}`;}
+  if(action.kind==="tasks") return memory.assistantItems("task").map(t=>`${t.id}. ${t.text}`).join("\n") || "You have no open local tasks.";
+  if(action.kind==="complete") {if(!memory.assistantItems("task").some(t=>t.id===action.id))return "I couldn't find that open local task.";memory.assistantDone(action.id);return `Completed local task ${action.id}.`;}
+  if(action.kind==="reminder") {memory.assistantAdd("reminder",action.text,action.due);return `I'll remind you at ${new Date(action.due).toLocaleTimeString()}: ${action.text}. Looma needs to be running to deliver it.`;}
+  if(action.kind==="briefing") return localBriefing();
+  if(action.kind==="briefing-toggle") {
+    for(const item of memory.assistantItems("briefing"))memory.assistantDone(item.id);
+    if(action.enabled){const d=new Date();d.setHours(9,0,0,0);if(d.getTime()<=Date.now())d.setDate(d.getDate()+1);memory.assistantAdd("briefing","Morning briefing",d.getTime());}
+    return action.enabled?"Daily local briefings enabled for 9 AM. Looma needs to be running.":"Daily briefings disabled.";
+  }
+  if(action.kind==="open") {
+    if(action.app==='browser'){await shell.openExternal('https://www.google.com');return 'Opened your browser.';}
+    const mac:Record<string,string>={chrome:'Google Chrome',safari:'Safari',calculator:'Calculator',notes:'Notes',calendar:'Calendar',music:'Music',spotify:'Spotify',files:'Finder',finder:'Finder',notepad:'TextEdit'};
+    const win:Record<string,string>={chrome:'chrome.exe',calculator:'calc.exe',notes:'notepad.exe',notepad:'notepad.exe',files:'explorer.exe',finder:'explorer.exe'};
+    if(process.platform==='darwin')await exec('/usr/bin/open',['-a',mac[action.app]],{timeout:10000});
+    else if(process.platform==='win32' && win[action.app])await exec(win[action.app],[],{timeout:10000});
+    else return 'That app shortcut is not available on this system. You can use a connected tool for the action.';
+    return `Opened ${action.app}.`;
+  }
+  const selected=await dialog.showOpenDialog({title:'Choose a folder for Looma to search',properties:['openDirectory']});
+  if(selected.canceled)return 'File search cancelled.';
+  const found:string[]=[];let visited=0;
+  async function scan(folder:string,depth:number):Promise<void>{
+    if(depth>5||visited>=1500||found.length>=20)return;
+    const entries=await readdir(folder,{withFileTypes:true}).catch(()=>[]);
+    for(const e of entries){if(++visited>1500||found.length>=20)break;if(e.name.startsWith('.')||e.name==='node_modules')continue;const file=join(folder,e.name);if(e.isFile()&&e.name.toLowerCase().includes(action.kind==='files'?action.query.toLowerCase():''))found.push(file);else if(e.isDirectory())await scan(file,depth+1);}
+  }
+  await scan(selected.filePaths[0],0);return found.length?`Matching files in your chosen folder:\n${found.join("\n")}`:'No matching files in the searched portion of that folder.';
+}
 let state: PetState = "Idle",
   status = "Monitoring is ready",
   busy = false,
@@ -310,6 +382,7 @@ else {
           wakeWord: true,
           cartoonVoice: true,
         });
+      if (process.argv.includes("--cartoon-puppy")) memory.set({...memory.settings(), puppyAppearance:"cartoon"});
       if (process.argv.includes("--enable-voice")) memory.set({ ...memory.settings(), voiceInput: true, voiceOutput: true, wakeWord: true });
       if (process.argv.includes("--puppy-voice")) memory.set({ ...memory.settings(), cartoonVoice: true, speechProvider: "edge", voiceStyle: "female", voiceInput: true, voiceOutput: true, wakeWord: true });
       memory.prune(memory.settings().retention);
@@ -369,6 +442,15 @@ else {
       if (memory.settings().provider === "ollama")
         void runtime.start().catch(() => {});
       void runtime.refresh(memory.settings().model, true);
+      const homeFile = join(app.getPath("userData"), "smart-room.enc");
+      let homeData: unknown = {};
+      if (existsSync(homeFile)) {
+        try { homeData = JSON.parse(safeStorage.decryptString(readFileSync(homeFile))); } catch {}
+      }
+      homeControl = new HomeControl(homeData, (data) => {
+        if (!safeStorage.isEncryptionAvailable() || (process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text")) throw Error("Secure device storage is unavailable");
+        writeFileSync(homeFile, safeStorage.encryptString(JSON.stringify(data)), {mode: 0o600});
+      });
       const cloudFile = join(app.getPath("userData"), "cloud-providers.enc");
       let cloudData: unknown = {};
       if (existsSync(cloudFile)) {
@@ -399,6 +481,12 @@ else {
           }
         },
       );
+      // Import a caller-supplied token once, then remove it before launching child processes.
+      const hfToken = process.env.HF_TOKEN?.trim();
+      delete process.env.HF_TOKEN;
+      if (hfToken) {
+        void cloudModels.manage({action:"save",provider:"huggingface",key:hfToken}).catch(() => {});
+      }
       const connectionFile = join(app.getPath("userData"), "connections.enc");
       credentialsPersistent =
         safeStorage.isEncryptionAvailable() &&
@@ -438,6 +526,9 @@ else {
       const area = screen.getPrimaryDisplay().workArea;
       pet.setPosition(area.x + area.width - 260, area.y + area.height - 280);
       if (!memory.settings().pet) pet.hide();
+      assistantTimer=setInterval(()=>{
+        for(const kind of ["reminder","briefing"])for(const item of memory.assistantItems(kind)){if(item.due>Date.now())continue;memory.assistantDone(item.id);const text=kind==="briefing"?localBriefing():`Reminder: ${item.text}`;memory.add("assistant",text);void dots.record("Scheduled reminder",text).catch(()=>{});if(memory.settings().notifications&&Notification.isSupported())new Notification({title:"Looma",body:text.slice(0,250)}).show();if(memory.settings().voiceOutput)pet.webContents.send("speak",text);if(kind==="briefing"){const d=new Date();d.setDate(d.getDate()+1);d.setHours(9,0,0,0);memory.assistantAdd("briefing",item.text,d.getTime());}}
+      },1000);
       Menu.setApplicationMenu(
         Menu.buildFromTemplate([
           {
@@ -446,6 +537,14 @@ else {
               { label: "Open workspace", click: () => dots.show() },
               { label: "Settings", click: () => dots.showSettings() },
               { label: "Show companion", click: () => pet.show() },
+              { label: "Puppy appearance", submenu: [
+                { label: "Original cartoon puppy", type: "radio", checked: memory.settings().puppyAppearance === "cartoon", click: () => memory.set({...memory.settings(), puppyAppearance:"cartoon"}) },
+                { label: "Animated 3D puppy", type: "radio", checked: memory.settings().puppyAppearance === "model", click: () => memory.set({...memory.settings(), puppyAppearance: "model"}) },
+                { label: "Original puppy picture", type: "radio", checked: memory.settings().puppyAppearance === "portrait", click: () => memory.set({...memory.settings(), puppyAppearance: "portrait"}) },
+              ] },
+              { label: "Walk around", click: () => performGesture(companionCommand("walk")!) },
+              { label: "Play with a ball", click: () => performGesture(companionCommand("fetch")!) },
+              { label: "Stay here", click: () => performGesture(companionCommand("stay")!) },
               { type: "separator" },
               {
                 label: "Debug: simulate sleep and wake",
@@ -707,6 +806,7 @@ else {
       ipcMain.on("pet-move", (event, dx, dy) => {
         if (event.sender !== pet.webContents) return;
         if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+        stopDesktopPlay();
         const b = pet.getBounds();
         pet.setPosition(Math.round(b.x + dx), Math.round(b.y + dy));
       });
@@ -773,6 +873,8 @@ else {
           let answer: string;
           resting = false;
           const companion = companionCommand(text);
+          const assistant = assistantIntent(text);
+          const room = homeIntent(text);
           const task = text.match(/^\/tasks(?:\s+@([a-zA-Z0-9_-]+))?\s*(.*)$/i);
           const personal = memory.settings().personalization
             ? personalMemory(
@@ -786,6 +888,11 @@ else {
           if (personal) {
             if (personal.save) memory.add("personal", personal.save);
             answer = personal.answer;
+          } else if (room) {
+            try { answer = await homeControl.execute(room); }
+            catch (error) { answer = error instanceof Error ? error.message : "Open Settings → Smart room to connect your devices."; }
+          } else if (assistant) {
+            answer = await runAssistant(assistant);
           } else if (companion) {
             performGesture(companion);
             answer = companion.answer;
@@ -1009,6 +1116,7 @@ else {
                 return value?.action === "list"
                   ? cloudModels.status()
                   : cloudModels.manage(value);
+              if (path === "/home") return homeControl.manage(value);
               if (path === "/mcp") return desktopMcp(value);
               if (path === "/open-auth") {
                 const parsed = z
@@ -1059,6 +1167,8 @@ else {
       app.quit();
     });
   app.on("before-quit", () => {
+    stopDesktopPlay();
+    if(assistantTimer)clearInterval(assistantTimer);
     quitting = true;
     dots.stop();
     runtime?.stop();

@@ -132,3 +132,24 @@ test("discover models saves a bounded provider catalog and selection", async () 
     globalThis.fetch = original;
   }
 });
+
+test("Muse routes keep provider suffix and separate local reasoning from spoken answer", async () => {
+  const original=globalThis.fetch; const calls:any[]=[];
+  globalThis.fetch=(async (url,options)=>{calls.push({url:String(url),headers:options?.headers,body:JSON.parse(String(options?.body))});return new Response(JSON.stringify({choices:[{message:{content:"Ready",reasoning_content:"private reasoning"}}]}));}) as typeof fetch;
+  try {
+    const hub=new CloudModels({keys:{huggingface:"test-hf"}},()=>{});
+    assert.equal(await hub.reply("Hello","huggingface:meta-models/Muse-Glimmer-30B:together"),"Ready");
+    assert.equal(calls[0].body.model,"meta-models/Muse-Glimmer-30B:together");
+    assert.equal(calls[0].url,"https://router.huggingface.co/v1/chat/completions");
+    assert.equal(await hub.reply("Hello","local:muse-glimmer-30B"),"Ready");
+    assert.equal(calls[1].headers.Authorization,undefined);
+    assert.deepEqual(calls[1].body.chat_template_kwargs,{reasoning_strength:"low"});
+    assert.equal(calls[1].body.stop,undefined);
+    assert.doesNotMatch(JSON.stringify(hub.status()),/test-hf/);
+  } finally { globalThis.fetch=original; }
+});
+test("Together access blocks are distinguished from invalid token errors", async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=(async()=>new Response("Access denied Cloudflare",{status:403})) as typeof fetch;
+  try {await assert.rejects(()=>new CloudModels({keys:{huggingface:"test"}},()=>{}).reply("Hello","huggingface:meta-models/Muse-Glimmer-30B:together"),/Together blocked/);} finally {globalThis.fetch=original;}
+});

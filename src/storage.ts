@@ -20,7 +20,7 @@ export class Memory {
       existsSync(file) ? readFileSync(file) : undefined,
     );
     db.run(
-      "CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, data TEXT); CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER,kind TEXT,text TEXT); CREATE TABLE IF NOT EXISTS usage (day TEXT, app TEXT, seconds INTEGER, PRIMARY KEY(day,app));",
+      "CREATE TABLE IF NOT EXISTS assistant_items (id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT,text TEXT,due INTEGER,done INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, data TEXT); CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER,kind TEXT,text TEXT); CREATE TABLE IF NOT EXISTS usage (day TEXT, app TEXT, seconds INTEGER, PRIMARY KEY(day,app));",
     );
     return new Memory(db, file);
   }
@@ -93,6 +93,15 @@ export class Memory {
     q.free();
     return rows;
   }
+  assistantAdd(kind:string,text:string,due=0) {
+    this.db.run("INSERT INTO assistant_items(kind,text,due) VALUES (?,?,?)",[kind,text,due]);this.save();
+  }
+  assistantItems(kind:string) {
+    const q=this.db.prepare("SELECT id,text,due FROM assistant_items WHERE kind=? AND done=0 ORDER BY id");q.bind([kind]);
+    const rows:{id:number;text:string;due:number}[]=[];
+    while(q.step()){const r=q.getAsObject();rows.push({id:Number(r.id),text:String(r.text),due:Number(r.due)});}q.free();return rows;
+  }
+  assistantDone(id:number) {this.db.run("UPDATE assistant_items SET done=1 WHERE id=?",[id]);this.save();}
   counts() {
     const day = new Date();
     day.setHours(0, 0, 0, 0);
@@ -120,7 +129,7 @@ export class Memory {
     this.save();
   }
   clear() {
-    this.db.run("DELETE FROM events; DELETE FROM usage; VACUUM;");
+    this.db.run("DELETE FROM events; DELETE FROM usage; DELETE FROM assistant_items; VACUUM;");
     this.save();
   }
 }

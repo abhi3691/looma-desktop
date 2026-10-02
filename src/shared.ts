@@ -12,6 +12,7 @@ export const states = [
 export type PetState = (typeof states)[number];
 export const settingsSchema = z
   .object({
+    puppyAppearance: z.enum(["cartoon", "model", "portrait"]).default("cartoon"),
     personalization: z.boolean().default(false),
     cartoonVoice: z.boolean().default(false),
     speechProvider: z.enum(["offline", "edge"]).default("offline"),
@@ -50,6 +51,7 @@ export const settingsSchema = z
   .strict();
 export type Settings = z.infer<typeof settingsSchema>;
 export const defaults: Settings = {
+  puppyAppearance: "cartoon",
   personalization: false,
   cartoonVoice: false,
   speechProvider: "offline",

@@ -26,7 +26,7 @@ export default function ProviderSettings() {
           ...(key ? { key } : {}),
         }),
       );
-      setNotice("Key accepted. Model list refreshed.");
+      setNotice(id === "local" ? "Local model connected." : "Credential accepted. Model list refreshed.");
       window.dispatchEvent(new Event("looma-models-changed"));
     } catch (e) {
       setNotice(e.message);
@@ -39,7 +39,7 @@ export default function ProviderSettings() {
     <section className="bg-[#fffdf8] border border-[#eadbc7] rounded-2xl p-4 space-y-4">
       <h3 className="text-sm font-semibold">AI providers</h3>
       <p className="text-xs text-[#89735e]">
-        Choose GPT, Grok, Gemini, DeepSeek or Claude. Keys are encrypted on this
+        Choose GPT, Grok, Gemini, DeepSeek, Claude or Muse Glimmer. Keys are encrypted on this
         device. Only your current question goes to the selected provider; task
         data and memory stay local.
       </p>
@@ -49,14 +49,14 @@ export default function ProviderSettings() {
             <strong>{p.name}</strong>
             <span>
               {p.verified
-                ? "Key verified"
+                ? (p.local ? "Local server connected" : "Key verified")
                 : p.configured
                   ? "Key saved"
                   : "Not connected"}
             </span>
           </div>
-          <input
-            aria-label={`${p.name} API key`}
+          {!p.local && <input
+            aria-label={p.id === "huggingface" ? "Hugging Face token" : `${p.name} API key`}
             type="password"
             autoComplete="new-password"
             value={keys[p.id] || ""}
@@ -64,17 +64,18 @@ export default function ProviderSettings() {
             placeholder={
               p.configured
                 ? "Paste a replacement key (optional)"
-                : "Paste API key"
+                : (p.id === "huggingface" ? "Paste HF_TOKEN" : "Paste API key")
             }
             className="w-full border border-[#dfcdb5] rounded-lg p-2 text-xs"
-          />
+          />}
+          {p.local && <p className="text-xs text-[#89735e]">Connect a local llama.cpp server on port 8080. For Muse Glimmer, use a current build with its chat template enabled.</p>}
           <div className="flex gap-2">
             <button
-              disabled={!!busy || (!keys[p.id] && !p.configured)}
+              disabled={!!busy || (!p.local && !keys[p.id] && !p.configured)}
               onClick={() => connect(p.id, "save")}
               className="px-3 py-2 rounded-lg bg-[#eadbc7] text-xs disabled:opacity-50"
             >
-              {busy === p.id ? "Checking…" : "Save & connect"}
+              {busy === p.id ? "Checking…" : (p.local ? "Connect local model" : "Save & connect")}
             </button>
             {p.configured && (
               <button

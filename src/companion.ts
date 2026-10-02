@@ -1,6 +1,6 @@
 import type { PetState } from "./shared";
 export type Gesture =
-  "sit" | "wag" | "stretch" | "spin" | "play" | "sleep" | "wake" | "cuddle";
+  "walk" | "fetch" | "stop" | "sit" | "wag" | "stretch" | "spin" | "play" | "sleep" | "wake" | "cuddle";
 export function companionCommand(
   text: string,
 ): { gesture: Gesture; state: PetState; answer: string } | undefined {
@@ -13,6 +13,9 @@ export function companionCommand(
     .replace(/[.!?]+$/, "")
     .trim();
   const actions: [RegExp, Gesture, PetState, string][] = [
+    [/^(?:walk|walk around|go for a walk|നടക്കൂ)$/, "walk", "Walking", "ഞാൻ ഒന്ന് നടക്കാം."],
+    [/^(?:fetch|chase the ball|follow the ball|play ball|bring the ball|പന്ത് കളിക്കാം)$/, "fetch", "Walking", "പന്ത് നീക്കൂ, ഞാൻ പിന്നാലെ വരാം!"],
+    [/^(?:stop walking|stop playing|stay|stay here|നിൽക്കൂ)$/, "stop", "Idle", "ശരി, ഞാൻ ഇവിടെ നിൽക്കാം."],
     [
       /^(?:sit|sit down|ഇരിക്കൂ|ഇരിക്ക്)$/,
       "sit",

@@ -33,6 +33,10 @@ async def providers():
 async def manage_provider(value: dict = Body(...)):
     return await desktop_request('/providers', value)
 
+@app.post('/api/v1/desktop/home')
+async def manage_home(value: dict = Body(...)):
+    return await desktop_request('/home', value)
+
 @app.post('/api/v1/desktop/mcp')
 async def manage_mcp(value: dict = Body(...)):
     return await desktop_request('/mcp', value)
