@@ -260,7 +260,7 @@ export class CloudModels {
           { role: "user", content: question },
         ],
         max_tokens: id === "local" || id === "huggingface" ? 8192 : 4096,
-        ...(id === "local" ? {temperature:1,top_p:.95,top_k:64,chat_template_kwargs:{reasoning_strength:"low"}} : {}),
+        ...(id === "local" ? {temperature:1,top_p:.95,top_k:64,chat_template_kwargs:{reasoning_strength:"low",...(/qwen/i.test(model)?{enable_thinking:false}:{})}} : {}),
         stream: false,
       });
       answer = result.choices?.[0]?.message?.content || "";
