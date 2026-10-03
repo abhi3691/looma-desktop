@@ -1,0 +1,16 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {MediaStudio} from '../src/media-studio';import {assistantIntent} from '../src/assistant-actions';
+async function settle(studio:MediaStudio){for(let i=0;i<20;i++){const jobs=await studio.manage({action:'list'});if(jobs[0].status!=='Generating')return jobs[0];await new Promise(r=>setTimeout(r,5));}throw Error('Timed out');}
+test('generated image uses only prompt, saves private media, survives restart, and hides credentials',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'looma-media-'));const original=globalThis.fetch;let body:any;
+ globalThis.fetch=(async (url,options)=>{assert.equal(String(url),'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent');body=JSON.parse(String(options?.body));return new Response(JSON.stringify({candidates:[{content:{parts:[{inlineData:{mimeType:'image/png',data:Buffer.from('image-bytes').toString('base64')}}]}}]}));}) as typeof fetch;
+ try{const studio=new MediaStudio(dir,()=> 'private-test-key');await studio.manage({action:'create',kind:'image',prompt:'A puppy'});const job=await settle(studio);assert.equal(job.status,'Ready');assert.equal(readFileSync(join(dir,job.file!),'utf8'),'image-bytes');assert.deepEqual(body.contents,[{parts:[{text:'A puppy'}]}]);assert.doesNotMatch(JSON.stringify(job),/private-test-key/);assert.equal((await new MediaStudio(dir,()=> '').manage({action:'list'}))[0].status,'Ready');}finally{globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
+});
+test('video jobs reject untrusted download hosts without sending credentials',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'looma-video-'));const original=globalThis.fetch;let calls=0;
+ globalThis.fetch=(async()=>{calls++;return new Response(JSON.stringify(calls===1?{name:'models/veo-3.1-fast-generate-preview/operations/test'}:{done:true,response:{generateVideoResponse:{generatedSamples:[{video:{uri:'https://evil.example/movie.mp4'}}]}}}));}) as typeof fetch;
+ try{const studio=new MediaStudio(dir,()=> 'private');const jobs=await studio.manage({action:'create',kind:'video',prompt:'A puppy'});await new Promise(r=>setTimeout(r,10));await studio.manage({action:'poll',id:jobs[0].id});const job=await settle(studio);assert.equal(job.status,'Failed');assert.match(job.error!,/Untrusted/);assert.equal(calls,2);}finally{globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
+});
+test('missing media key does not fake a generated result',async()=>{const dir=mkdtempSync(join(tmpdir(),'looma-nokey-'));try{await assert.rejects(()=>new MediaStudio(dir,()=> '').manage({action:'create',kind:'video',prompt:'test'}),/key/);}finally{rmSync(dir,{recursive:true,force:true});}});
+test('alarms handle midnight, tomorrow, AM/PM and invalid times',()=>{const now=new Date(2026,9,3,10,0).getTime();const alarm=assistantIntent('set alarm at 9:30 am for standup',now);assert.equal(alarm?.kind,'reminder');if(alarm?.kind==='reminder'){assert.equal(new Date(alarm.due).getDate(),4);assert.equal(new Date(alarm.due).getHours(),9);}assert.equal(assistantIntent('set alarm at 25:99',now),undefined);assert.equal(assistantIntent('set alarm at 0 pm',now),undefined);});

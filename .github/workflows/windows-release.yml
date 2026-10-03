@@ -59,6 +59,7 @@ jobs:
           Copy-Item "$env:RUNNER_TEMP/whisper/LICENSE" bundled-speech-runtime/
           & bundled-speech-runtime/whisper-cli.exe --help
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - run: npm run build:local-runtime
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

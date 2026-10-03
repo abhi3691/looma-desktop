@@ -16,6 +16,13 @@ export function assistantIntent(text:string,now=Date.now()):AssistantIntent|unde
   const delay=count*(unit.toLowerCase().startsWith('hour')?3600000:unit.toLowerCase().startsWith('minute')?60000:1000);
   if(count>0&&delay<=30*86400000)return {kind:'reminder',text:message,due:now+delay};
  }
+ if((m=t.match(/^(?:set\s+(?:an?\s+)?alarm|wake me)\s+(?:at|for)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s+(?:for|to)\s+(.+))?$/i))){
+  let hour=Number(m[1]);const minute=Number(m[2]||0),suffix=m[3]?.toLowerCase();
+  if(minute>59||hour>23||(suffix&&(hour<1||hour>12)))return;
+  if(suffix)hour=hour%12+(suffix==='pm'?12:0);
+  const due=new Date(now);due.setHours(hour,minute,0,0);if(due.getTime()<=now)due.setDate(due.getDate()+1);
+  return {kind:'reminder',text:'Alarm: '+(m[4]||'Time to wake up'),due:due.getTime()};
+ }
  if((m=t.match(/^(?:add|create)\s+(?:a\s+)?local task\s*:?\s+(.+)$/i)))return {kind:'task',text:m[1]};
  if(/^(?:show|list|what are)\s+(?:my\s+)?local tasks(?: today)?\??$/i.test(t))return {kind:'tasks'};
  if((m=t.match(/^(?:complete|finish|mark done)\s+(?:local\s+)?task\s+(\d+)$/i)))return {kind:'complete',id:Number(m[1])};

@@ -116,3 +116,11 @@ The original cartoon puppy is the default; the 3D character remains optional in 
 Settings → AI providers includes Hugging Face (`HF_TOKEN`, encrypted on this device) and a local llama.cpp connection. Muse Glimmer routes to `meta-models/Muse-Glimmer-30B:together`; provider access and billing still apply. A token supplied through `HF_TOKEN` at launch is imported into encrypted storage and removed from the environment before child processes start. It is never checked into the repository.
 
 Local Muse GGUF requires downloaded weights and a current llama.cpp server on loopback port 8080, with its chat template enabled. Reasoning content is separated from spoken output.
+
+### Looma 1.1.0
+
+Settings now includes app-managed local Qwen 4B chat, dated alarms and event reminders, app launch shortcuts, and image/video creation. Local chat downloads the verified official Qwen Q4 model (about 2.5 GB), starts a loopback llama.cpp server, and stops its own server on quit. The verified llama.cpp runtime is bundled; large Muse weights are not included.
+
+Media Studio uses the saved Google key: Gemini image generation and Veo 3.1 Fast video generation. Provider access and billing are required. Jobs and generated files remain on the device, authenticated previews appear in Settings, and video operations continue polling in the background. Generation errors are shown explicitly.
+
+Alarms and manually entered events require Looma to run; they do not wake a sleeping computer. App controls currently open supported apps. Automatic connected-calendar monitoring and unrestricted desktop automation are not included.

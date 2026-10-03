@@ -2,7 +2,7 @@ import { z } from "zod";
 import { liveReply } from "./google-live";
 export const cloudProviders = {
   huggingface: {name:"Hugging Face · Muse Glimmer",base:"https://router.huggingface.co/v1",seeds:["meta-models/Muse-Glimmer-30B:together", "meta-models/Muse-Glimmer-30B"],protocol:"chat"},
-  local: {name:"Local GGUF · Muse Glimmer",base:"http://127.0.0.1:8080/v1",seeds:["muse-glimmer-30B"],protocol:"chat"},
+  local: {name:"Local models · Qwen / Muse",base:"http://127.0.0.1:8080/v1",seeds:["muse-glimmer-30B"],protocol:"chat"},
   google: {
     name: "Google Gemini",
     base: "https://generativelanguage.googleapis.com/v1beta",
@@ -54,6 +54,7 @@ export class CloudModels {
   ) {
     this.data = storedSchema.parse(stored || {});
   }
+  credential(id:CloudId) {return this.key(id);}
   get active() {
     return this.data.active;
   }

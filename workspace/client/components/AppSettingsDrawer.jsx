@@ -1,5 +1,8 @@
 "use client";
 
+import LocalModelSettings from "./LocalModelSettings";
+import MediaStudio from "./MediaStudio";
+import AssistantControls from "./AssistantControls";
 import SmartRoomSettings from "./SmartRoomSettings";
 import CompanionSettings from "./CompanionSettings";
 import ProviderSettings from "./ProviderSettings";
@@ -122,6 +125,9 @@ export default function AppSettingsDrawer({ models, isOpen, onClose, currentMode
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <CompanionSettings />
         <ProviderSettings />
+        <LocalModelSettings />
+        <AssistantControls />
+        <MediaStudio />
         <SmartRoomSettings />
 
         <div className={cardClass}>

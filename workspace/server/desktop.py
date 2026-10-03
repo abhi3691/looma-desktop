@@ -33,6 +33,18 @@ async def providers():
 async def manage_provider(value: dict = Body(...)):
     return await desktop_request('/providers', value)
 
+@app.post('/api/v1/desktop/local-server')
+async def local_server(value: dict = Body(...)):
+    return await desktop_request('/local-server', value)
+
+@app.post('/api/v1/desktop/media')
+async def media(value: dict = Body(...)):
+    return await desktop_request('/media', value)
+
+@app.post('/api/v1/desktop/assistant')
+async def assistant(value: dict = Body(...)):
+    return await desktop_request('/assistant', value)
+
 @app.post('/api/v1/desktop/home')
 async def manage_home(value: dict = Body(...)):
     return await desktop_request('/home', value)
@@ -57,6 +69,19 @@ if __name__ == '__main__':
     if not any(bot.get("id") == "bot-looma" for bot in storage_service.get_bots()):
         from datetime import datetime, timezone
         storage_service.save_bots(storage_service.get_bots() + [dict(id='bot-looma', name='Looma', role='Your desktop companion', description='Questions, work and a little company.', avatar='puppy', model='gemini-3.1-flash-live-preview', accent_color='#a5784f', system_prompt='You are Looma.', tools=[], pinned=True, unread_count=0, created_at=datetime.now(timezone.utc).isoformat())])
+    creations = Path(os.environ['DATA_DIR']) / 'creations'
+    creations.mkdir(parents=True, exist_ok=True)
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    @app.get('/api/v1/creations/{filename}')
+    async def creation_file(filename: str):
+        import re
+        if not re.fullmatch(r'[0-9a-f-]{36}\.(png|jpg|webp|mp4)', filename):
+            raise HTTPException(404)
+        target = creations / filename
+        if not target.is_file():
+            raise HTTPException(404)
+        return FileResponse(target)
     app.mount('/', StaticFiles(directory=root, html=True), name='looma-client')
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))

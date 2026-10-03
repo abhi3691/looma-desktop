@@ -1,6 +1,6 @@
 {
   "name": "careless-ai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Your private desktop companion",
   "author": "Looma",
   "license": "MIT",
@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "pack": "npm run build && electron-builder --dir",
-    "dist:mac": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && electron-builder --mac",
-    "dist:win": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && electron-builder --win",
+    "dist:mac": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && npm run build:local-runtime && electron-builder --mac",
+    "dist:win": "npm run build && npm run build:workspace && npm run build:server && npm run build:voice && npm run build:local-runtime && electron-builder --win",
     "test:smoke": "npm run build && electron scripts/smoke.cjs",
     "format": "prettier --write src tests scripts public build.mjs package.json tsconfig.json README.md",
     "setup:mac-runtime": "node scripts/download-runtime.mjs",
@@ -21,7 +21,8 @@
     "build:workspace": "npm --prefix workspace/client run build",
     "build:server": "node scripts/build-server.mjs",
     "test:workspace": "electron scripts/workspace-smoke.cjs",
-    "build:voice": "node scripts/build-voice.mjs"
+    "build:voice": "node scripts/build-voice.mjs",
+    "build:local-runtime": "node scripts/bundle-local-runtime.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
@@ -114,6 +115,10 @@
       {
         "from": "bundled-models",
         "to": "speech-models"
+      },
+      {
+        "from": "bundled-local-runtime",
+        "to": "local-runtime"
       }
     ]
   }

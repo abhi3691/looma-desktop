@@ -1,3 +1,7 @@
+import {ManagedLocal} from "./managed-local";
+import {MediaStudio} from "./media-studio";
+let managedLocal:ManagedLocal;
+let mediaStudio:MediaStudio;
 import {MusicRequest} from "./music-request";
 import {playMusic} from "./music-player";
 const musicRequest=new MusicRequest();
@@ -490,6 +494,13 @@ else {
       if (hfToken) {
         void cloudModels.manage({action:"save",provider:"huggingface",key:hfToken}).catch(() => {});
       }
+      managedLocal=new ManagedLocal(join(app.getPath("userData"),"local-chat"),process.resourcesPath);
+      mediaStudio=new MediaStudio(join(app.getPath("userData"),"open-dots","creations"),()=>cloudModels.credential("google"));
+      if(managedLocal.state.enabled || process.argv.includes("--start-local-ai"))void managedLocal.enable().then(async()=>{
+        if(managedLocal.state.phase!=="Ready")return;
+        await cloudModels.manage({action:"refresh",provider:"local"});
+        if(process.argv.includes("--start-local-ai"))await cloudModels.manage({action:"select",model:"local:looma-local-qwen4b"});
+      }).catch(error=>{managedLocal.state.phase="Failed";managedLocal.state.error=error.message;});
       const connectionFile = join(app.getPath("userData"), "connections.enc");
       credentialsPersistent =
         safeStorage.isEncryptionAvailable() &&
@@ -875,6 +886,7 @@ else {
           memory.add("user", text);
           let answer: string;
           resting = false;
+          const media = text.match(/^(?:generate|create|make)\s+(?:an?\s+)?(image|picture|video)\s+(?:of\s+|about\s+)?(.+)$/i);
           const music = musicRequest.next(text);
           const companion = companionCommand(text);
           const assistant = assistantIntent(text);
@@ -889,7 +901,9 @@ else {
                   .map((e) => e.text),
               )
             : undefined;
-          if (music) {
+          if(media){
+            try {await mediaStudio.manage({action:"create",kind:media[1].toLowerCase()==="video"?"video":"image",prompt:media[2]});answer="Your creation has started. Open Settings → Create images & videos to see its progress and result.";}catch(error){answer=error instanceof Error?error.message:"Could not start creation.";}
+          } else if (music) {
             try {answer=music.query ? await playMusic(music.query) : music.answer;}
             catch {answer="I could not open YouTube Music. Please check your connection and try again.";}
           } else if (personal) {
@@ -1122,6 +1136,27 @@ else {
                 return value?.action === "list"
                   ? cloudModels.status()
                   : cloudModels.manage(value);
+              if(path==="/local-server"){
+                const v=z.object({action:z.enum(["status","start","stop"])}).strict().parse(value);
+                const status=await managedLocal.request(v.action);
+                if(status.phase==="Ready")await cloudModels.manage({action:"refresh",provider:"local"});
+                return status;
+              }
+              if(path==="/media")return mediaStudio.manage(value);
+              if(path==="/assistant"){
+                const v=z.object({action:z.enum(["list","alarm","cancel","open"]),text:z.string().trim().max(500).optional(),due:z.number().optional(),id:z.number().int().optional(),app:z.string().optional()}).strict().parse(value);
+                if(v.action==="alarm"){
+                  if(!v.text||!v.due||v.due<=Date.now()||v.due>Date.now()+30*86400000)throw Error("Choose a future alarm within 30 days.");
+                  memory.assistantAdd("reminder",v.text,v.due);
+                }
+                if(v.action==="cancel"){if(!memory.assistantItems("reminder").some(i=>i.id===v.id))throw Error("Reminder not found.");memory.assistantDone(v.id!);}
+                if(v.action==="open"){
+                  const intent=assistantIntent("open "+v.app);
+                  if(!intent||intent.kind!=="open")throw Error("Choose an available app.");
+                  await runAssistant(intent);
+                }
+                return memory.assistantItems("reminder");
+              }
               if (path === "/home") return homeControl.manage(value);
               if (path === "/mcp") return desktopMcp(value);
               if (path === "/open-auth") {
@@ -1178,6 +1213,8 @@ else {
     quitting = true;
     dots.stop();
     runtime?.stop();
+    managedLocal?.stop();
+    mediaStudio?.stop();
   });
   app.on("window-all-closed", () => app.quit());
 }

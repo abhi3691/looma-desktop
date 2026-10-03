@@ -40,6 +40,7 @@ jobs:
           git -C "$RUNNER_TEMP/whisper" checkout 6e4ab854f67f743900934a703d5603419384c961
           python scripts/bundle-speech-runtime.py "$RUNNER_TEMP/whisper"
           bundled-speech-runtime/whisper-cli --help
+      - run: npm run build:local-runtime
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
