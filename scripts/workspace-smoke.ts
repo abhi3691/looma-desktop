@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from "electron";
+import {defaults} from "../src/shared";
 import { CloudModels } from "../src/cloud-models";
 import { DotsRuntime } from "../src/dots-runtime";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -34,6 +35,10 @@ app.whenReady().then(async () => {
       async (path, value) => {
         if (path === "/models") return hub.models();
         if (path === "/providers") return hub.status();
+        if (path === "/local-server") return {phase:"Stopped",progress:0,error:"",enabled:false};
+        if (path === "/media" || path === "/assistant") return [];
+        if (path === "/home") return {configured:false,bindings:[],url:"",enabled:false};
+        if (path === "/companion") return {settings:defaults,voiceHealth:{devices:[],audioLevel:0},runtime:{speechModelAvailable:true}};
         if (path === "/mcp")
           return {
             persistent: true,
@@ -118,6 +123,15 @@ app.whenReady().then(async () => {
       "PASS: authenticated workspace, sandbox, no anonymous API access, chat stream through desktop bridge.",
     );
     // Signing out must remain signed out until an explicit desktop reconnect.
+    await win.webContents.executeJavaScript(`document.querySelector('[title="Settings"]').click()`);
+    await new Promise(r=>setTimeout(r,500));
+    const settingsBody=await win.webContents.executeJavaScript("document.body.innerText");
+    for(const label of ["Local AI inside Looma","Create images & videos","Apps, alarms & event announcements","Internet answers"])assert.ok(settingsBody.includes(label),"Missing settings control: "+label);
+    assert.equal(await fetch(origin+'/api/v1/creations/00000000-0000-0000-0000-000000000000.png').then(r=>r.status),401);
+    const newEndpoints=await win.webContents.executeJavaScript(`Promise.all(['local-server','media','assistant'].map(route=>fetch('/api/v1/desktop/'+route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:route==='local-server'?'status':'list'})}).then(r=>r.status)))`);
+    assert.deepEqual(newEndpoints,[200,200,200]);
+    await win.webContents.executeJavaScript(`document.querySelector('[title="Close App Settings"]').click()`);
+    console.log("PASS: local AI, media and alarm settings; authenticated bridge and media previews.");
     await win.webContents.executeJavaScript(
       `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Sign out')).click()`,
     );

@@ -20,7 +20,7 @@
     "test:voice": "node --import tsx scripts/voice-smoke.mjs",
     "build:workspace": "npm --prefix workspace/client run build",
     "build:server": "node scripts/build-server.mjs",
-    "test:workspace": "electron scripts/workspace-smoke.cjs",
+    "test:workspace": "node scripts/run-workspace-smoke.mjs",
     "build:voice": "node scripts/build-voice.mjs",
     "build:local-runtime": "node scripts/bundle-local-runtime.mjs"
   },
